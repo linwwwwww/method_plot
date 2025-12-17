@@ -96,7 +96,9 @@ def plot_mom1(ax, outfolder, p_data, is_bottom_row):
     pa_m = p_data['pa_m']
     
     # 读取 Data Map (注意：这里读取的是 DATA 的 mom1)
-    fpath = os.path.join(outfolder, 'maps', gname + '_azim_1mom-10+ymin:ymax+10, -10+xmin:xmax+10]
+    fpath = os.path.join(outfolder, 'maps', gname + '_azim_1mom.fits')
+    f1 = fits.open(fpath)
+    mom1 = f1[0].data[-10+ymin:ymax+10, -10+xmin:xmax+10]
     f1.close()
     
     data_to_plot = mom1 - vsys_m
@@ -124,7 +126,8 @@ def plot_mom1(ax, outfolder, p_data, is_bottom_row):
 
     # 2. Global Minor Axis (Grey Solid)
     y_min = np.tan(np.radians(pa_m)) * (x_grid - xcen) + ycen
-    ax.plot(x_grid, y_min, '---10, xmax - xmin+10)
+    ax.plot(x_grid, y_min, '--', color='k', linewidth=1, alpha=0.8)
+    ax.set_xlim(-10, xmax - xmin+10)
     ax.set_ylim(-10, ymax - ymin+10)
     
     # 去除 ticks 和 labels
@@ -134,7 +137,7 @@ def plot_mom1(ax, outfolder, p_data, is_bottom_row):
     if is_bottom_row:
         pass 
         
-    return im, norm', color='k', linewidth=1, alpha=0.8)
+    
 
     # 3. Warped Axis / Locus (复用您的代码)
     rad_pix = rad / 4.0  # 您的缩放比例
@@ -161,7 +164,7 @@ def plot_mom1(ax, outfolder, p_data, is_bottom_row):
     
     # 坐标轴清理
     # 限制显示范围为 Data 切片大小，防止线条画出界
-    ax.set_xlim(.fits')
+    
     if not os.path.exists(fpath):
         # 尝试读取 local 或 azim 作为替代，如果 data 不存在
         fpath = os.path.join(outfolder, 'maps', gname + '_azim_1mom.fits')
@@ -169,8 +172,7 @@ def plot_mom1(ax, outfolder, p_data, is_bottom_row):
              ax.text(0.5, 0.5, "Data Map Missing", ha='center')
              return None, None
 
-    f1 = fits.open(fpath)
-    mom1 = f1[0].data[
+    return im, norm
 
 def plot_pv_hybrid(ax, outfolder, pv_type, p_data, is_left_col, is_bottom):
     """
@@ -315,7 +317,7 @@ def plot_real_profile(ax, barolo_path, row_idx, is_bottom_row):
         ax.plot(rad, pa, '-', color=color_pa, lw=2, label='$\Delta$ P.A. (deg)')
         
         # 2. 绘制 VRAD (虚线) -> 同样使用 ax (去掉 twinx)
-        ax.plot(rad, vrad, '--', color=color_vr, lw=2, label='Vrad (km/s)')
+        ax.plot(rad, vrad, '--', color=color_vr, lw=2, label='$\Delta$ Vrad (km/s)')
         
         # 设置 X 轴范围
         ax.set_xlim(left=0, right=np.max(rad)*1.05)
@@ -328,15 +330,13 @@ def plot_real_profile(ax, barolo_path, row_idx, is_bottom_row):
             margin = (y_max - y_min) * 0.1
             ax.set_ylim(-32, 32)
 
-        #ax.grid(True, ls=':', alpha=0.5)
-        ax.set_xticks([])
-        #ax.set_yticks([])
-    
+        ax.grid(True, ls=':', alpha=0.5)
+
         # Labels
-        # if is_bottom_row:
-        #     ax.set_xlabel('Radius (arcsec)')
-        # else:
-        #     ax.tick_params(labelbottom=False)
+        if is_bottom_row:
+            ax.set_xlabel('Radius (arcsec)')
+        else:
+            ax.tick_params(labelbottom=False)
 
         # === 关键修改：单轴图例 ===
         if row_idx == 0:
@@ -379,7 +379,7 @@ for i in range(rows):
     im, norm = plot_mom1(ax0, path, p_data, is_bottom)
     if i == 0: 
         global_im, global_norm = im, norm
-        ax0.set_title("Velocity Field")
+        ax0.set_title("Data Velocity Field")
     
     # 行标题 (左侧)
     ax0.text(-0.15, 0.5, title, transform=ax0.transAxes, 
@@ -409,7 +409,7 @@ for i in range(rows):
 #     cb.set_label(r'$\Delta V_{LOS}$ (km/s)', fontsize=9)
 
 # 保存文件
-output_file = 'figure1_profileexplain.pdf'
+output_file = 'Final_Kinematic_Comparison_6x4.pdf'
 plt.subplots_adjust(left=0.1, bottom=0.08, right=0.95, top=0.95)
 fig.savefig(output_file, dpi=150, bbox_inches='tight')
 print(f"Finished. Saved to {output_file}")
