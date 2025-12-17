@@ -330,13 +330,13 @@ def plot_real_profile(ax, barolo_path, row_idx, is_bottom_row):
             margin = (y_max - y_min) * 0.1
             ax.set_ylim(-32, 32)
 
-        ax.grid(True, ls=':', alpha=0.5)
+        #ax.grid(True, ls=':', alpha=0.5)
 
-        # Labels
-        if is_bottom_row:
-            ax.set_xlabel('Radius (arcsec)')
-        else:
-            ax.tick_params(labelbottom=False)
+        # # Labels
+        # if is_bottom_row:
+        #     ax.set_xlabel('Radius (arcsec)')
+        # else:
+        #     ax.tick_params(labelbottom=False)
 
         # === 关键修改：单轴图例 ===
         if row_idx == 0:
@@ -349,7 +349,7 @@ def plot_real_profile(ax, barolo_path, row_idx, is_bottom_row):
             # 其他行如果不需要显示Y轴刻度数字，可以去掉
             # ax.set_yticklabels([]) 
             pass
-
+        ax.set_xticks([])
     except Exception as e:
         ax.text(0.5, 0.5, "Read Error", ha='center', fontsize=8)
         print(f"Error reading {txt_path}: {e}")
@@ -399,6 +399,7 @@ for i in range(rows):
     ax3 = fig.add_subplot(gs[i, 3])
     plot_real_profile(ax3, path, i, is_bottom)
     if i == 0: ax3.set_title("Profile")
+    
 # --- 添加 Colorbar (Velocity Field) ---
 # if global_im:
 #     # 获取最后一行的位置
