@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import os
 import re
 import glob
@@ -46,11 +49,6 @@ pat_fname = re.compile(
 )
 
 def compute_sign(pa_k, vr_k):
-    """
-    计算 sign:
-    sign > 0 (同号) -> 定义为 Suppressing
-    sign < 0 (异号) -> 定义为 Enhancing
-    """
     if pa_k is None: return 0
     if vr_k is None: return 0
     if vr_k == 0: return 0
@@ -60,7 +58,6 @@ def compute_sign(pa_k, vr_k):
 # 3. 数据加载函数 (DATA LOADING)
 # ==========================================
 def load_single_file(file_name, ring_root):
-    """读取单个文件的 True vs Measured 数据"""
     m = pat_fname.match(file_name)
     if not m: return None
 
@@ -69,7 +66,6 @@ def load_single_file(file_name, ring_root):
     vr_k = float(g["vr_k"]) if g.get("vr_k") else None
     inc_val = int(g["inc"])
 
-    # 1. 确定 Initial (True) 路径
     if "model1123" in ring_root:
         in_path = os.path.join(INITIAL_1123, file_name)
     else:
@@ -80,7 +76,6 @@ def load_single_file(file_name, ring_root):
     try: inputf = pd.read_csv(in_path, delimiter=r"\s+")
     except: return None
 
-    # 2. 确定 Measured (Output) 路径
     base_name, _ = os.path.splitext(file_name)
     out_path = os.path.join(ring_root, base_name, "second_step_check_sinw", "rings_final2.txt")
     if not os.path.exists(out_path): return None
@@ -88,7 +83,6 @@ def load_single_file(file_name, ring_root):
     try: outputf = pd.read_csv(out_path, delimiter=r"\s+")
     except: return None
 
-    # 3. 对齐与合并
     n = min(len(inputf), len(outputf))
     df = pd.DataFrame({
         "True_VRAD": inputf["VRAD(km/s)"][:n].values,
@@ -102,15 +96,11 @@ def load_single_file(file_name, ring_root):
         "file": file_name
     })
     
-    # 过滤无效点
     df = df[df["True_VRAD"] != 0].reset_index(drop=True)
     return df
 
 def load_all_data():
-    """读取所有符合条件的数据"""
     df_list = []
-    
-    # 1. model1123: INC45, INC75, INC60
     files_1123 = sorted(glob.glob(os.path.join(RING_MODEL1123, "*.txt")))
     for fp in files_1123:
         fname = os.path.basename(fp)
@@ -119,7 +109,6 @@ def load_all_data():
             df = load_single_file(fname, RING_MODEL1123)
             if df is not None: df_list.append(df)
 
-    # 2. test_more_model (Base): INC60
     files_base = sorted(glob.glob(os.path.join(RING_BASE, "*.txt")))
     for fp in files_base:
         fname = os.path.basename(fp)
@@ -128,175 +117,89 @@ def load_all_data():
             df = load_single_file(fname, RING_BASE)
             if df is not None: df_list.append(df)
 
-    if not df_list:
-        print("No data loaded!")
-        return pd.DataFrame()
-        
-    return pd.concat(df_list, ignore_index=True)
+    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
 
 # ==========================================
-# 4. 绘图与统计函数 (PLOTTING)
+# 4. 绘图与统计函数 (PLOTTING) - 已更新为 Median/16%/84%
 # ==========================================
 def bin_stats(x_plot, y_plot, nbins=10):
-    """计算残差的 Mean 和 1-Sigma"""
+    """
+    计算残差的中位数 (Median) 和 16%/84% 分位数 (取代 Mean/Sigma)
+    """
     temp_df = pd.DataFrame({'x': np.array(x_plot), 'y': np.array(y_plot)})
     temp_df['res'] = temp_df['y'] - temp_df['x']
 
     if temp_df['x'].empty:
-        return [], [], []
+        return [], [], [], []
         
     bin_edges = np.linspace(temp_df['x'].min(), temp_df['x'].max(), nbins + 1)
     temp_df['bin_cat'] = pd.cut(temp_df['x'], bins=bin_edges, include_lowest=True)
 
-    grouped = temp_df.groupby('bin_cat', observed=False)
-    mean_res = grouped['res'].mean().values
-    sigma_res = grouped['res'].std().values
+    grouped = temp_df.groupby('bin_cat', observed=False)['res']
+    
+    # 获取统计量
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    median_res = grouped.median().values
+    q16_res = grouped.quantile(0.16).values
+    q84_res = grouped.quantile(0.84).values
 
-    return bin_centers, mean_res, sigma_res
+    return bin_centers, median_res, q16_res, q84_res
 
 def plot_combined_panel(ax_scatter, ax_resid, x, y, inc_col, label_prefix, is_pa=False, show_legend=False):
-    """
-    画单个Panel: 上部 Scatter, 下部 Residual
-    """
     if x.empty or y.empty: return
 
     for inc, style in INC_STYLES.items():
         sub = inc_col[inc_col == inc].index
         if len(sub) == 0: continue
         
-        x_sub = x.loc[sub]
-        y_sub = y.loc[sub]
-        
-        if is_pa:
-            x_plot = x_sub - 120
-            y_plot = y_sub - 120
-        else:
-            x_plot = x_sub
-            y_plot = y_sub
+        x_sub, y_sub = x.loc[sub], y.loc[sub]
+        x_plot, y_plot = (x_sub - 120, y_sub - 120) if is_pa else (x_sub, y_sub)
             
         # --- Scatter ---
-        ax_scatter.scatter(
-            x_plot, y_plot,
-            s=10, alpha=0.6, edgecolor="white", linewidth=0.3,
-            **style
-        )
+        ax_scatter.scatter(x_plot, y_plot, s=10, alpha=0.6, edgecolor="white", linewidth=0.3, **style)
         
-        # --- Residual ---
-        bin_centers, mean_res, sigma_res = bin_stats(x_plot, y_plot)
+        # --- Residual (Median + 16/84% Area) ---
+        bin_centers, med, q16, q84 = bin_stats(x_plot, y_plot)
         if len(bin_centers) > 0:
-            ax_resid.plot(bin_centers, mean_res, **style)
+            ax_resid.plot(bin_centers, med, **style)
             fill_style = {k: v for k, v in style.items() if k not in ['marker', 'label']}
-            ax_resid.fill_between(bin_centers, mean_res - sigma_res, mean_res + sigma_res, alpha=0.2, **fill_style)
+            ax_resid.fill_between(bin_centers, q16, q84, alpha=0.2, **fill_style)
 
-    # --- 装饰 Scatter ---
-    ax_scatter.set_xlim(-30, 30)
-    ax_scatter.set_ylim(-30, 30)
+    # Decorate
+    ax_scatter.set_xlim(-30, 30); ax_scatter.set_ylim(-30, 30)
     ax_scatter.plot([-30, 30], [-30, 30], "k--", lw=1, alpha=0.5)
-    ax_scatter.grid(True, alpha=0.3)
-    ax_scatter.set_ylabel(f"Measured {label_prefix}")
-    ax_scatter.tick_params(labelbottom=False) # 隐藏Scatter的x轴标签
-    
-    # 图例只在需要的 Panel 显示
-    if show_legend:
-        ax_scatter.legend(loc='lower right', fontsize=14, frameon=True)
+    ax_scatter.grid(True, alpha=0.3); ax_scatter.set_ylabel(f"Recovered {label_prefix}")
+    ax_scatter.tick_params(labelbottom=False)
+    if show_legend: ax_scatter.legend(loc='lower right', fontsize=14, frameon=True)
 
-    # --- 装饰 Residue ---
-    ax_resid.set_ylim(-15, 15)
-    ax_resid.axhline(0, color='k', linestyle='--', lw=1, alpha=0.5)
-    ax_resid.grid(True, alpha=0.3)
-    ax_resid.set_xlabel(f"True {label_prefix}")
-    ax_resid.set_ylabel("Residue")
-    # sharex 已经自动处理了 X 轴范围
+    ax_resid.set_ylim(-15, 15); ax_resid.axhline(0, color='k', linestyle='--', lw=1, alpha=0.5)
+    ax_resid.grid(True, alpha=0.3); ax_resid.set_xlabel(f"True {label_prefix}"); ax_resid.set_ylabel("Residue")
 
 def plot_six_panel_figure(df_all, df_supp, df_enh):
-    """
-    绘制 2排3列 的大图
-    Row 1: VRAD (All, Suppressing, Enhancing)
-    Row 2: PA   (All, Suppressing, Enhancing)
-    每个子图内部: 上2/3 Scatter, 下1/3 Residual
-    """
     fig = plt.figure(figsize=(18, 12))
-    
-    # 使用 GridSpec 定义外层布局: 2行, 3列
-    # height_ratios=[1, 1] 表示上下两排高度一致
     outer_grid = gridspec.GridSpec(2, 3, height_ratios=[1, 1], hspace=0.2, wspace=0.25)
+    datasets = [("All Data", df_all), ("Suppressing", df_supp), ("Enhancing", df_enh)]
 
-    # 数据集列表 [ (Title, DataFrame), ... ]
-    datasets = [
-        ("All Data", df_all),
-        ("Suppressing", df_supp),
-        ("Enhancing", df_enh)
-    ]
+    for row_idx, (lab, is_pa) in enumerate([("V$_{rad}$ (km/s)", False), ("P.A. (deg)", True)]):
+        for col_idx, (name, df) in enumerate(datasets):
+            inner_grid = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=outer_grid[row_idx, col_idx], height_ratios=[3, 1], hspace=0.0)
+            ax_sc = fig.add_subplot(inner_grid[0])
+            ax_rs = fig.add_subplot(inner_grid[1], sharex=ax_sc)
+            
+            plot_combined_panel(ax_sc, ax_rs, df["True_PA" if is_pa else "True_VRAD"], 
+                                df["Measured_PA" if is_pa else "Measured_VRAD"], 
+                                df["INC"], label_prefix=lab, is_pa=is_pa, show_legend=(col_idx == 0 and row_idx == 0))
+            if not is_pa:
+                ax_sc.set_title(f"{name}", fontsize=16, fontweight='bold')
 
-    # ==========================
-    # 第一排: VRAD
-    # ==========================
-    for col_idx, (name, df) in enumerate(datasets):
-        # 在外层 Grid 的对应位置创建一个内层 GridSpec (2行1列, 3:1)
-        inner_grid = gridspec.GridSpecFromSubplotSpec(
-            2, 1, 
-            subplot_spec=outer_grid[0, col_idx], 
-            height_ratios=[3, 1], 
-            hspace=0.0  # Scatter 和 Residue 紧贴
-        )
-        
-        ax_sc = fig.add_subplot(inner_grid[0])
-        ax_rs = fig.add_subplot(inner_grid[1], sharex=ax_sc)
-        
-        # 仅在第一列显示图例
-        show_leg = (col_idx == 0)
-        
-        plot_combined_panel(
-            ax_sc, ax_rs, 
-            df["True_VRAD"], df["Measured_VRAD"], df["INC"], 
-            label_prefix="V$_{rad}$ (km/s)", is_pa=False, show_legend=show_leg
-        )
-        
-        ax_sc.set_title(f"{name} - Vrad", fontsize=16, fontweight='bold')
-
-    # ==========================
-    # 第二排: P.A.
-    # ==========================
-    for col_idx, (name, df) in enumerate(datasets):
-        # 在外层 Grid 的对应位置创建一个内层 GridSpec
-        inner_grid = gridspec.GridSpecFromSubplotSpec(
-            2, 1, 
-            subplot_spec=outer_grid[1, col_idx], 
-            height_ratios=[3, 1], 
-            hspace=0.0
-        )
-        
-        ax_sc = fig.add_subplot(inner_grid[0])
-        ax_rs = fig.add_subplot(inner_grid[1], sharex=ax_sc)
-        
-        plot_combined_panel(
-            ax_sc, ax_rs, 
-            df["True_PA"], df["Measured_PA"], df["INC"], 
-            label_prefix="P.A. (deg)", is_pa=True, show_legend=False
-        )
-        
-        ax_sc.set_title(f"{name} - P.A.", fontsize=16, fontweight='bold')
     plt.savefig("figure3-incforincfixedgalaxies.pdf")
     plt.show()
 
-# ==========================================
-# 5. 主执行逻辑 (MAIN)  
-# ==========================================
 if __name__ == "__main__":
-    print("Loading all data...")
     df_all = load_all_data()
-    print(f"Total loaded: {len(df_all)} points.")
-    
     if not df_all.empty:
-        # 拆分数据集
         df_supp = df_all[df_all["sign"] > 0].reset_index(drop=True)
         df_enh  = df_all[df_all["sign"] < 0].reset_index(drop=True)
-        
-        print(f"Suppressing count: {len(df_supp)}")
-        print(f"Enhancing count:   {len(df_enh)}")
-
-        # 绘图
         plot_six_panel_figure(df_all, df_supp, df_enh)
         
 #!/usr/bin/env python3
