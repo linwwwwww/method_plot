@@ -38,9 +38,19 @@ mom1 = f1[0].data[ymin:ymax+1, xmin:xmax+1]
 mod_file_list = sorted([f for f in os.listdir(outfolder + '/maps/') if '1mom.fits' in f and ('azim' in f or 'local' in f)])
 mom1_mod = fits.open(outfolder + '/maps/' + mod_file_list[0])[0].data[ymin:ymax+1, xmin:xmax+1]
 
+rad, inc, pa, xpos, ypos, vsys = np.genfromtxt(
+    outfolder + "rings_final2.txt",
+    usecols=(1,4,5,9,10,11),
+    unpack=True
+)
+
+xcen_m, ycen_m, inc_m, pa_m, vsys_m = np.nanmean((xpos, ypos, inc, pa, vsys), axis=1)
+xcen = xcen_m - xmin
+ycen = ycen_m - ymin
+
 # --- 3. 开始绘图 ---
-fig = plt.figure(figsize=(17, 12), dpi=150)
-gs = GridSpec(2, 2, figure=fig, hspace=0.25, wspace=0.2,height_ratios=[0.9, 1])
+fig = plt.figure(figsize=(18, 12), dpi=150)
+gs = GridSpec(2, 2, figure=fig,  wspace=0.2,height_ratios=[0.9, 1])
 
 # ==========================================
 # 【左上：速度图对比】
@@ -78,19 +88,32 @@ for j, d in enumerate(map_list):
     ax.contour(d, levels=[0], colors='green', origin='lower', linewidths=1)
     ax.set_xlabel('X (pix)')
     ax.set_title(titles[j], fontsize=10, fontweight='bold')
+    
     if j == 0: 
         ax.set_ylabel('Y (pix)')
     else: 
         ax.set_yticklabels([])
+    # ===== 加 global major axis =====
+    x_grid = np.linspace(0, xmax-xmin, 500)
+    
+    # major axis: PA - 90°
+    # y_major = np.tan(np.radians(pa_m - 90)) * (x_grid - xcen) + ycen
+    # ax.plot(x_grid, y_major, '-', color='grey', lw=1.5, alpha=0.7)
+    if len(rad_pix) > 5:
+        x_p = rad_pix * np.cos(np.radians(pa - 90))
+        y_p = rad_pix * np.sin(np.radians(pa - 90))
+        ax.plot(xcen - x_p, ycen - y_p, '-', color='grey', lw=1.2, alpha=0.6)
+        ax.plot(xcen + x_p, ycen + y_p, '-', color='grey', lw=1.2, alpha=0.6)
+        
 
 # 在左上格子的底部绘制横跨两图的色标
 ax_cb_tl = fig.add_subplot(gs_tl_main[1, 0])
 cb_tl = ColorbarBase(ax_cb_tl, orientation='horizontal', cmap=cmap_vel, norm=norm_m)
-cb_tl.set_label(r'$\Delta V_{\mathrm{los}}$ (km s$^{-1}$)', fontsize=11)
+cb_tl.set_label(r'$\Delta V_{\mathrm{los}}$ (km s$^{-1}$)', fontsize=14)
 cb_tl.outline.set_linewidth(0.5)
 
 # 顶部标题
-fig.text(0.13, 0.9, r'$\Delta PA=7.5\ \ \Delta Vrad=27$', fontsize=14, fontweight='bold')
+#fig.text(0.13, 0.9, r'$\Delta PA=7.5\ deg\ \ \Delta Vrad=-27\ km/s$', fontsize=14, fontweight='bold')
 
 # ==========================================
 # 【右上：PV 图对比】修正部分
@@ -155,7 +178,7 @@ ax_vrad.plot(true_["RAD(arcs)"], true_["VRAD(km/s)"], 'k--', label='True')
 ax_vrad.errorbar(recorver["RAD(arcs)"], recorver["VRAD(km/s)"], yerr=error_["VRADerror(km/s)"], fmt='o', color='tab:blue', label='Recovered', markersize=4, capsize=2)
 ax_vrad.set_xlabel('Radius (arcsec)')
 ax_vrad.set_ylabel(r'$V_{\mathrm{rad}}$ (km/s)')
-ax_vrad.legend(frameon=False)
+ax_vrad.legend(fontsize=14)
 ax_vrad.set_ylim(-30, 30)
 # ==========================================
 # 【右下：PA 误差图】
@@ -165,7 +188,7 @@ ax_pa.plot(true_["RAD(arcs)"], true_["P.A.(deg)"], 'k--', label='True')
 ax_pa.errorbar(recorver["RAD(arcs)"], recorver["P.A.(deg)"], yerr=error_["P.A.error(deg)"], fmt='s', color='tab:red', label='Recovered', markersize=4, capsize=2)
 ax_pa.set_xlabel('Radius (arcsec)')
 ax_pa.set_ylabel('P.A. (deg)')
-ax_pa.legend(frameon=False)
+ax_pa.legend(fontsize=14)
 ax_pa.set_ylim(120-10, 120+10)
 plt.savefig("single_galaxy_error.pdf")
 plt.tight_layout()
