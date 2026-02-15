@@ -13,6 +13,7 @@ from matplotlib.colors import TwoSlopeNorm
 # ==========================================
 # 1. PATH CONFIG
 # ==========================================
+plt.style.use("/net/dataserver3/data/users/linn/pic_style/science3.mplstyle")
 RING_MODEL_DIR = "/net/dataserver3/data/users/linn/para_Barolo/test_more_model/varied_inc/"
 INITIAL_DIR    = "/net/dataserver3/data/users/linn/para_Barolo/test_more_model/varied_inc/initial/"
 
@@ -125,7 +126,7 @@ def plot_panel(ax_sc, ax_rs, df, xcol, ycol, label, is_pa, cmap, norm, is_inc=Fa
     ax_sc.tick_params(labelbottom=False)
     
     ax_rs.set_ylim(-15, 15); ax_rs.axhline(0, ls="--", color="k", alpha=0.5)
-    ax_rs.grid(alpha=0.3); ax_rs.set_xlabel(f"True {label}"); ax_rs.set_ylabel("Residual")
+    ax_rs.grid(alpha=0.3); ax_rs.set_xlabel(f"True {label}"); ax_rs.set_ylabel("Residuals")
     return sc
 
 # ==========================================
@@ -143,9 +144,9 @@ def plot_one_row_all(df_all, title):
     outer = gridspec.GridSpec(1, 4, width_ratios=[1, 1, 1, 0.05], wspace=0.3)
 
     rows = [
-        ("True_VRAD", "Measured_VRAD", "V$_{rad}$ (km/s)", False, False),
+        ("True_VRAD", "Measured_VRAD", r"$V_{\rm rad}$ (km/s)", False, False),
         ("True_PA",   "Measured_PA",  "P.A. (deg)",        True,  False),
-        ("True_INC",  "Measured_INC", "Inc (deg)",         False, True),
+        ("True_INC",  "Measured_INC", "$i$ (deg)",         False, True),
     ]
 
     mappable = None
@@ -159,7 +160,7 @@ def plot_one_row_all(df_all, title):
 
     if mappable is not None:
         cax = fig.add_subplot(outer[0, 3])
-        plt.colorbar(mappable, cax=cax).set_label(r"$\Delta \mathrm{Inc}$ (deg)", fontsize=13)
+        plt.colorbar(mappable, cax=cax).set_label(r"$\Delta i$ (deg)", fontsize=13)
 
     plt.savefig("figure_varied_inc_vrad_pa_inc_row_median.pdf", bbox_inches='tight')
     plt.show()

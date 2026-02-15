@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import re
 import glob
@@ -21,6 +18,7 @@ plt.rcParams.update({
     "legend.fontsize": 13,
 })
 
+plt.style.use("/net/dataserver3/data/users/linn/pic_style/science3.mplstyle")
 # ==========================================
 # 1. 配置与路径 (CONFIG)
 # ==========================================
@@ -32,9 +30,9 @@ INITIAL_1123   = "/net/dataserver3/data/users/linn/para_initial/test_more_model/
 
 # 绘图样式配置
 INC_STYLES = {
-    45: dict(color="#1f77b4", marker="o", label="INC45"),
-    60: dict(color="#ff7f0e", marker="s", label="INC60"),
-    75: dict(color="#2ca02c", marker="^", label="INC75"),
+    45: dict(color="#1f77b4", marker="o", label="$i=45$"),
+    60: dict(color="#ff7f0e", marker="s", label="$i=60$"),
+    75: dict(color="#2ca02c", marker="^", label="$i=75$"),
 }
 
 # ==========================================
@@ -173,14 +171,14 @@ def plot_combined_panel(ax_scatter, ax_resid, x, y, inc_col, label_prefix, is_pa
     if show_legend: ax_scatter.legend(loc='lower right', fontsize=14, frameon=True)
 
     ax_resid.set_ylim(-15, 15); ax_resid.axhline(0, color='k', linestyle='--', lw=1, alpha=0.5)
-    ax_resid.grid(True, alpha=0.3); ax_resid.set_xlabel(f"True {label_prefix}"); ax_resid.set_ylabel("Residue")
+    ax_resid.grid(True, alpha=0.3); ax_resid.set_xlabel(f"True {label_prefix}"); ax_resid.set_ylabel("Residuals")
 
 def plot_six_panel_figure(df_all, df_supp, df_enh):
     fig = plt.figure(figsize=(18, 12))
     outer_grid = gridspec.GridSpec(2, 3, height_ratios=[1, 1], hspace=0.2, wspace=0.25)
     datasets = [("All Data", df_all), ("Suppressing", df_supp), ("Enhancing", df_enh)]
 
-    for row_idx, (lab, is_pa) in enumerate([("V$_{rad}$ (km/s)", False), ("P.A. (deg)", True)]):
+    for row_idx, (lab, is_pa) in enumerate([(r"$V_{\rm rad}$ (km/s)", False), ("P.A. (deg)", True)]):
         for col_idx, (name, df) in enumerate(datasets):
             inner_grid = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=outer_grid[row_idx, col_idx], height_ratios=[3, 1], hspace=0.0)
             ax_sc = fig.add_subplot(inner_grid[0])
@@ -202,9 +200,6 @@ if __name__ == "__main__":
         df_enh  = df_all[df_all["sign"] < 0].reset_index(drop=True)
         plot_six_panel_figure(df_all, df_supp, df_enh)
         
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import re
 import glob
@@ -214,210 +209,154 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 # ==========================================
-# 1. PATH CONFIG
+# 1. 路径与全局配置
 # ==========================================
-RING_MODEL = "/net/dataserver3/data/users/linn/para_Barolo/test_more_model/snr_res_testing/"
-INITIAL_TRUE = "/net/dataserver3/data/users/linn/para_Barolo/test_more_model/snr_res_testing/new_res_output"
+TRUE_DIR = "/net/dataserver3/data/users/linn/para_Barolo/test_more_model/snr_res_testing/new_res_output"
+RES30_BASE = "/net/dataserver3/data/users/linn/para_Barolo/test_more_model/snr_res_testing/"
+OTHER_RES_BASE = "/net/dataserver3/data/users/linn/para_Barolo/test_more_model/snr_res_testing/new_res_260128/"
 
-# ==========================================
-# 2. STYLE CONFIG (by SNR)
-# ==========================================
+plt.rcParams.update({
+    "font.size": 14,
+    "axes.labelsize": 15,
+    "xtick.labelsize": 12,
+    "ytick.labelsize": 12,
+})
+plt.style.use("/net/dataserver3/data/users/linn/pic_style/science3.mplstyle")
+# 样式配置：使用你要求的配色风格
 SNR_STYLES = {
     5:  dict(color="#1f77b4", marker="o", label="SNR 5"),
     10: dict(color="#ff7f0e", marker="s", label="SNR 10"),
     20: dict(color="#2ca02c", marker="^", label="SNR 20"),
 }
 
-# ==========================================
-# 3. FILENAME PARSER
-# ==========================================
+RES_STYLES = {
+    30: dict(color="#1C4D8D", marker="o", label="Res 30"),
+    15: dict(color="#79C9C5", marker="s", label="Res 15"),
+    7:  dict(color="#2ca02c", marker="^", label="Res 7"),
+    4:  dict(color="#F96E5B", marker="D", label="Res 4"),
+}
+
 pat_fname = re.compile(
-    r"^(?:\d+_)?ring_"
-    r"v(?P<v>\d+)_R(?P<R>\d+)_"
-    r"(?:(?:PAfixed)|PAk(?P<pa_k>-?\d*\.?\d+)_TP(?P<pa_tp>-?\d*\.?\d+))_"
-    r"VR(?:(?:k(?P<vr_k>-?\d*\.?\d+)_TP(?P<vr_tp>-?\d*\.?\d+))|(?P<vr_fixed>0))_"
-    r"INC(?P<inc>\d+)_Res(?P<res>\d+)\.txt$"
+    r"^(?:\d+_)?ring_v(?P<v>\d+)_R(?P<R>\d+)_.*_INC(?P<inc>\d+)_Res(?P<res>\d+)\.txt$"
 )
 
-def compute_sign(pa_k, vr_k):
-    if pa_k is None or vr_k is None or vr_k == 0:
-        return 0
-    return 1 if pa_k * vr_k > 0 else -1
-
 # ==========================================
-# 4. DATA LOADING
+# 2. 数据处理与统计函数 (Median / 16% / 84%)
 # ==========================================
-def load_one_model_all_snr(fname):
-    m = pat_fname.match(fname)
-    if not m:
-        return None
-
-    g = m.groupdict()
-    pa_k = float(g["pa_k"]) if g["pa_k"] else None
-    vr_k = float(g["vr_k"]) if g["vr_k"] else None
-
-    true_path = os.path.join(INITIAL_TRUE, fname)
-    if not os.path.exists(true_path):
-        return None
-
-    df_true = pd.read_csv(true_path, delim_whitespace=True)
-    true_vrad = df_true["VRAD(km/s)"].values
-    true_pa   = df_true["P.A.(deg)"].values
-
-    dfs = []
-
-    for snr in [5, 10, 20]:
-        folder = fname.replace(".txt", f"_SNR{snr}")
-        out_path = os.path.join(
-            RING_MODEL, folder, "second_step_check_sinw", "rings_final2.txt"
-        )
-        if not os.path.exists(out_path):
-            continue
-
-        df_out = pd.read_csv(out_path, delim_whitespace=True)
-        n = min(len(true_vrad), len(df_out))
-
-        df = pd.DataFrame({
-            "True_VRAD": true_vrad[:n],
-            "Measured_VRAD": df_out["VRAD(km/s)"][:n],
-            "True_PA": true_pa[:n],
-            "Measured_PA": df_out["P.A.(deg)"][:n],
-            "SNR": snr,
-            "pa_k": pa_k,
-            "vr_k": vr_k,
-            "sign": compute_sign(pa_k, vr_k),
-        })
-
-        df = df[df["True_VRAD"] != 0].reset_index(drop=True)
-        dfs.append(df)
-
-    if dfs:
-        return pd.concat(dfs, ignore_index=True)
-    return None
-
-def load_all_data():
-    dfs = []
-    files = sorted(glob.glob(os.path.join(RING_MODEL, "*Res*.txt")))
+def load_data(base_dir, target_res=None, target_snr=None):
+    df_list = []
+    files = sorted(glob.glob(os.path.join(base_dir, "*Res*.txt")))
     for fp in files:
-        df = load_one_model_all_snr(os.path.basename(fp))
-        if df is not None:
-            dfs.append(df)
-    if dfs:
-        return pd.concat(dfs, ignore_index=True)
-    return pd.DataFrame()
+        fname = os.path.basename(fp)
+        m = pat_fname.match(fname)
+        if not m: continue
+        res_val = int(m.group("res"))
+        if target_res is not None and res_val != target_res: continue
+        
+        true_path = os.path.join(TRUE_DIR, fname)
+        if not os.path.exists(true_path): continue
+        df_true = pd.read_csv(true_path, sep='\s+')
+        
+        snrs = [5, 10, 20] if target_snr is None else [target_snr]
+        for snr in snrs:
+            folder = fname.replace(".txt", f"_SNR{snr}")
+            out_path = os.path.join(base_dir, folder, "second_step_check_sinw", "rings_final2.txt")
+            if not os.path.exists(out_path): continue
+            
+            df_out = pd.read_csv(out_path, sep='\s+')
+            n = min(len(df_true), len(df_out))
+            df = pd.DataFrame({
+                "True_VRAD": df_true["VRAD(km/s)"].values[:n],
+                "Measured_VRAD": df_out["VRAD(km/s)"].values[:n],
+                "True_PA": df_true["P.A.(deg)"].values[:n],
+                "Measured_PA": df_out["P.A.(deg)"].values[:n],
+                "SNR": snr, "Res": res_val
+            })
+            df = df[df["True_VRAD"] != 0].reset_index(drop=True)
+            df_list.append(df)
+    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
 
-# ==========================================
-# 5. BIN STAT
-# ==========================================
-def bin_stats(x, y, nbins=10):
-    df = pd.DataFrame({"x": x, "y": y})
-    df["res"] = df["y"] - df["x"]
+def bin_stats_median(x, y, cat_val,nbins=10):
+    if cat_val == 4:
+        nbins = 6
+    """计算中位数和 16/84 分位数"""
+    df = pd.DataFrame({"x": x, "y": y, "res": y - x})
+    if df.empty: return [], [], [], []
+    
     bins = np.linspace(df["x"].min(), df["x"].max(), nbins + 1)
     df["bin"] = pd.cut(df["x"], bins=bins, include_lowest=True)
-    g = df.groupby("bin", observed=False)
+    g = df.groupby("bin", observed=False)["res"]
+    
     xc = 0.5 * (bins[:-1] + bins[1:])
-    return xc, g["res"].mean().values, g["res"].std().values
+    median = g.median().values
+    q16 = g.quantile(0.16).values
+    q84 = g.quantile(0.84).values
+    return xc, median, q16, q84
 
-# ==========================================
-# 6. SINGLE PANEL (same as original)
-# ==========================================
-def plot_combined_panel(ax_sc, ax_rs, x, y, snr_col, label, is_pa=False, show_legend=False):
-    for snr, style in SNR_STYLES.items():
-        idx = snr_col[snr_col == snr].index
-        if len(idx) == 0:
-            continue
+def plot_panel(ax_sc, ax_rs, df, cat_col, style_dict, label, is_pa=False):
+    for cat, style in style_dict.items():
+        sub = df[df[cat_col] == cat]
+        if sub.empty: continue
+        
+        xs = (sub["True_PA"] - 120) if is_pa else sub["True_VRAD"]
+        ys = (sub["Measured_PA"] - 120) if is_pa else sub["Measured_VRAD"]
+        
+        # Scatter
+        ax_sc.scatter(xs, ys, s=12, alpha=0.5, edgecolor="none", color=style["color"],label=style["label"])
+        
+        # Stats: Median + 16/84% area
+        xc, med, q16, q84 = bin_stats_median(xs, ys,cat)
+        if len(xc) > 0:
+            ax_rs.plot(xc, med, color=style["color"], lw=2, marker=style["marker"], ms=6, )
+            ax_rs.fill_between(xc, q16, q84, alpha=0.2, color=style["color"], lw=0)
 
-        xs = x.loc[idx]
-        ys = y.loc[idx]
-
-        if is_pa:
-            xs = xs - 120
-            ys = ys - 120
-
-        ax_sc.scatter(
-            xs, ys, s=10, alpha=0.6,
-            edgecolor="white", linewidth=0.3, **style
-        )
-
-        xc, mu, sig = bin_stats(xs, ys)
-        ax_rs.plot(xc, mu, **style)
-        ax_rs.fill_between(xc, mu - sig, mu + sig,
-                           alpha=0.2, color=style["color"])
-
-    ax_sc.plot([-30, 30], [-30, 30], "k--", lw=1, alpha=0.5)
-    ax_sc.set_xlim(-30, 30)
-    ax_sc.set_ylim(-30, 30)
-    ax_sc.grid(alpha=0.3)
-    ax_sc.set_ylabel(f"Measured {label}")
+    # Decorate
+    ax_sc.plot([-30, 30], [-30, 30], "k--", alpha=0.5, lw=1)
+    ax_sc.set_xlim(-30, 30); ax_sc.set_ylim(-30, 30)
+    ax_sc.set_ylabel(f"Recovered {label}")
     ax_sc.tick_params(labelbottom=False)
-
-    if show_legend:
-        ax_sc.legend(loc="lower right", fontsize=12)
+    ax_sc.grid(True, alpha=0.3)
+    
+    ax_rs.axhline(0, ls="--", color="k", alpha=0.5, lw=1)
     ax_rs.set_ylim(-15, 15)
-    ax_rs.axhline(0, ls="--", color="k", alpha=0.5)
-    ax_rs.grid(alpha=0.3)
     ax_rs.set_xlabel(f"True {label}")
-    ax_rs.set_ylabel("Residual")
-    ax_sc.tick_params(axis="both", labelsize=13)
-    ax_rs.tick_params(axis="both", labelsize=13)
-# ==========================================
-# 7. SIX-PANEL FIGURE (STRUCTURE IDENTICAL)
-# ==========================================
-def plot_six_panel_figure(df_all, df_supp, df_enh):
-    fig = plt.figure(figsize=(18, 12))
-    outer = gridspec.GridSpec(2, 3, hspace=0.25, wspace=0.25)
-
-    datasets = [
-        ("All Data", df_all),
-        ("Suppressing", df_supp),
-        ("Enhancing", df_enh),
-    ]
-
-    # --- Row 1: VRAD ---
-    for i, (name, df) in enumerate(datasets):
-        inner = gridspec.GridSpecFromSubplotSpec(
-            2, 1, subplot_spec=outer[0, i],
-            height_ratios=[3, 1], hspace=0.0
-        )
-        ax_sc = fig.add_subplot(inner[0])
-        ax_rs = fig.add_subplot(inner[1], sharex=ax_sc)
-
-        plot_combined_panel(
-            ax_sc, ax_rs,
-            df["True_VRAD"], df["Measured_VRAD"], df["SNR"],
-            label="V$_{rad}$ (km/s)",
-            is_pa=False,
-            show_legend=(i == 0)
-        )
-        ax_sc.set_title(f"{name} - Vrad", fontsize=16, fontweight="bold")
-
-    # --- Row 2: PA ---
-    for i, (name, df) in enumerate(datasets):
-        inner = gridspec.GridSpecFromSubplotSpec(
-            2, 1, subplot_spec=outer[1, i],
-            height_ratios=[3, 1], hspace=0.0
-        )
-        ax_sc = fig.add_subplot(inner[0])
-        ax_rs = fig.add_subplot(inner[1], sharex=ax_sc)
-
-        plot_combined_panel(
-            ax_sc, ax_rs,
-            df["True_PA"], df["Measured_PA"], df["SNR"],
-            label="P.A. (deg)",
-            is_pa=True,
-            show_legend=False
-        )
-        ax_sc.set_title(f"{name} - P.A.", fontsize=16, fontweight="bold")
-
-    plt.savefig("figure_snr_six_panel.pdf")
-    plt.show()
+    ax_rs.set_ylabel("Residuals")
+    ax_rs.grid(True, alpha=0.3)
 
 # ==========================================
-# 8. MAIN
+# 3. 执行绘图 (2x2 布局)
 # ==========================================
 if __name__ == "__main__":
-    df_all = load_all_data()
-    df_supp = df_all[df_all["sign"] > 0]
-    df_enh  = df_all[df_all["sign"] < 0]
+    # 加载数据
+    df_snr_col = load_data(RES30_BASE, target_res=30)
+    
+    df_res30_s10 = df_snr_col[df_snr_col["SNR"] == 10]
+    df_others_s10 = load_data(OTHER_RES_BASE, target_snr=10)
+    df_res_col = pd.concat([df_res30_s10, df_others_s10], ignore_index=True)
 
-    plot_six_panel_figure(df_all, df_supp, df_enh)
+    fig = plt.figure(figsize=(15, 12))
+    outer_gs = gridspec.GridSpec(2, 2, hspace=0.22, wspace=0.28)
+
+    # 定义列的信息：(数据源, 分类字段, 样式字典, 标题)
+    cols_info = [
+        (df_snr_col, "SNR", SNR_STYLES, "SNR Effects (Res=30)"),
+        (df_res_col, "Res", RES_STYLES, "Res Effects (SNR=10)")
+    ]
+
+    for col_idx, (data, cat_field, styles, title) in enumerate(cols_info):
+        for row_idx, (lab, is_pa) in enumerate([(r"$V_{\rm rad}$ (km/s)", False), ("P.A. (deg)", True)]):
+            
+            inner = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=outer_gs[row_idx, col_idx], 
+                                                     height_ratios=[3, 1], hspace=0.0)
+            ax_sc = fig.add_subplot(inner[0])
+            ax_rs = fig.add_subplot(inner[1], sharex=ax_sc)
+            
+            plot_panel(ax_sc, ax_rs, data, cat_field, styles, lab, is_pa)
+            
+            if row_idx == 0:
+                ax_sc.set_title(title, fontsize=16, fontweight="bold", pad=20)
+                # 将图例放在第一个 row 的残差图中或者 Scatter 图中
+                ax_sc.legend(loc="lower right", fontsize=10,  frameon=True)
+
+    plt.savefig("Analysis_SNR_Res_Median_1684.pdf", bbox_inches='tight', dpi=300)
+    plt.show()
