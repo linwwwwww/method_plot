@@ -1,6 +1,5 @@
 import numpy as np
 import os
-import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.colorbar import ColorbarBase
@@ -30,6 +29,23 @@ plt.rcParams.update(params)
 
 labsize = 14
 
+
+def load_table(path):
+    with open(path) as f:
+        lines = f.readlines()
+
+    header_idx = next(i for i, line in enumerate(lines) if line.strip())
+    header_line = lines[header_idx].strip()
+    header_is_comment = header_line.startswith("#")
+    header = header_line.lstrip("#").split()
+    data = np.loadtxt(
+        path,
+        comments="#",
+        skiprows=0 if header_is_comment else header_idx + 1
+    )
+    data = np.atleast_2d(data)
+    return {name: data[:, i] for i, name in enumerate(header)}
+
 # ============================================================
 # 2. 路径与数据
 # ============================================================
@@ -41,9 +57,9 @@ galaxy = "ring_v200_R50_PAk0.05_TP450_VRk0.09_TP300_INC60"
 outfolder = RING_MODEL1123 + galaxy + "/second_step_check_sinw/"
 gname = "SNR10Res10mod"
 
-recorver = pd.read_csv(outfolder + "rings_final2.txt", delimiter=r"\s+")
-true_ = pd.read_csv(INITIAL_1123 + galaxy + ".txt", delimiter=r"\s+")
-error_ = pd.read_csv(RING_MODEL1123 + galaxy + "/bootstrap_error.txt", delimiter=r"\s+")
+recorver = load_table(outfolder + "rings_final2.txt")
+true_ = load_table(INITIAL_1123 + galaxy + ".txt")
+error_ = load_table(RING_MODEL1123 + galaxy + "/bootstrap_error.txt")
 
 # ============================================================
 # 3. 读取 ring 参数
@@ -97,7 +113,7 @@ ext_map = [0, xmax - xmin, 0, ymax - ymin]
 # ============================================================
 # 5. 开始画图
 # ============================================================
-fig = plt.figure(figsize=(18, 12), dpi=150)
+fig = plt.figure(figsize=(20, 12), dpi=150)
 gs = GridSpec(
     2, 2,
     figure=fig,
@@ -107,14 +123,14 @@ gs = GridSpec(
 )
 
 # ============================================================
-# 左上：DATA / MODEL velocity map
+# 左上：DATA / MODEL / RESIDUAL velocity map
 # ============================================================
 gs_tl_main = gs[0, 0].subgridspec(
     2, 1,
     height_ratios=[0.88, 0.08],
     hspace=0.23
 )
-gs_tl_maps = gs_tl_main[0, 0].subgridspec(1, 2, wspace=0.05)
+gs_tl_maps = gs_tl_main[0, 0].subgridspec(1, 3, wspace=0.05)
 
 cmap_vel = copy(plt.get_cmap("RdBu_r", 25))
 cmap_vel.set_bad("w", 1.0)
@@ -128,9 +144,10 @@ norm_m = mpl.colors.Normalize(vmin=-vabs, vmax=vabs)
 
 map_list = [
     mom1 - vsys_m,
-    mom1_mod - vsys_m
+    mom1_mod - vsys_m,
+    mom1 - mom1_mod
 ]
-titles = ["DATA", "MODEL"]
+titles = ["DATA", "MODEL", "RESIDUAL"]
 
 # global major axis from mean PA
 x_major = np.arange(0, xmax - xmin, 0.1)
@@ -227,15 +244,33 @@ cb_tl.outline.set_linewidth(0.5)
 # ============================================================
 # 右上：PV diagrams
 # ============================================================
-gs_tr = gs[0, 1].subgridspec(1, 2, wspace=0.15)
+gs_tr = gs[0, 1].subgridspec(
+    2, 3,
+    height_ratios=[1.0, 0.62],
+    width_ratios=[1.0, 1.0, 0.055],
+    hspace=0.12,
+    wspace=0.12
+)
 
 # PV 数据准备
 zmin, zmax = 13, 187
-image_maj = fits.open(outfolder + 'pvs/' + gname + '_pv_a.fits')
-image_min = fits.open(outfolder + 'pvs/' + gname + '_pv_b.fits')
-# 自动寻找对应的模型PV文件
-mod_pv_a = sorted([f for f in os.listdir(outfolder + 'pvs/') if 'pv_a_azim.fits' in f or 'pv_a_local.fits' in f])[0]
-mod_pv_b = sorted([f for f in os.listdir(outfolder + 'pvs/') if 'pv_b_azim.fits' in f or 'pv_b_local.fits' in f])[0]
+pvs_dir = outfolder + 'pvs/'
+data_pv_a = gname + '_pv_a_azim.fits'
+data_pv_b = gname + '_pv_b_azim.fits'
+if not os.path.exists(pvs_dir + data_pv_a):
+    data_pv_a = gname + '_pv_a.fits'
+if not os.path.exists(pvs_dir + data_pv_b):
+    data_pv_b = gname + '_pv_b.fits'
+
+image_maj = fits.open(pvs_dir + data_pv_a)
+image_min = fits.open(pvs_dir + data_pv_b)
+
+mod_pv_a = gname + 'mod_pv_a_azim.fits'
+mod_pv_b = gname + 'mod_pv_b_azim.fits'
+if not os.path.exists(pvs_dir + mod_pv_a):
+    mod_pv_a = sorted([f for f in os.listdir(pvs_dir) if 'pv_a_azim.fits' in f or 'pv_a_local.fits' in f])[0]
+if not os.path.exists(pvs_dir + mod_pv_b):
+    mod_pv_b = sorted([f for f in os.listdir(pvs_dir) if 'pv_b_azim.fits' in f or 'pv_b_local.fits' in f])[0]
 im_mod_maj = fits.open(outfolder + 'pvs/' + mod_pv_a)
 im_mod_min = fits.open(outfolder + 'pvs/' + mod_pv_b)
 
@@ -256,7 +291,10 @@ norm_pv = ImageNormalize(vmin=cont, vmax=image_maj[0].data.max()*0.7, stretch=Po
 # 绘制
 pv_datas = [image_maj[0].data[zmin:zmax+1, xminpv:xmaxpv+1], image_min[0].data[zmin:zmax+1, xminpv:xmaxpv+1]]
 pv_mods = [im_mod_maj[0].data[zmin:zmax+1, xminpv:xmaxpv+1], im_mod_min[0].data[zmin:zmax+1, xminpv:xmaxpv+1]]
+pv_residuals = [data - model for data, model in zip(pv_datas, pv_mods)]
 phi_labels = [r'$\phi = 120^\circ$', r'$\phi = 210^\circ$']
+resid_vmax = np.nanpercentile(np.abs(np.concatenate([r[np.isfinite(r)] for r in pv_residuals])), 99.0)
+resid_norm = mpl.colors.Normalize(vmin=-resid_vmax, vmax=resid_vmax)
 
 for i in range(2):
     ax = fig.add_subplot(gs_tr[0, i])
@@ -270,9 +308,9 @@ for i in range(2):
     if i == 0: 
             ax.set_ylabel(r'$\Delta V_{\mathrm{los}}$ (km s$^{-1}$)', fontsize=labsize)
             # 叠加旋转曲线点
-            ax.plot(radius_pts, vlos_pts, 'y.', markersize=7, markeredgecolor='olive', alpha=0.6)
+            if "radius_pts" in globals() and "vlos_pts" in globals():
+                ax.plot(radius_pts, vlos_pts, 'y.', markersize=7, markeredgecolor='olive', alpha=0.6)
             # 添加图例
-            from matplotlib.lines import Line2D
             legend_elements = [Line2D([0], [0], color='#00008B', lw=1, label='DATA'),
                                Line2D([0], [0], color='#B22222', lw=1.5, label='MODEL')]
             ax.legend(handles=legend_elements, loc='lower left', frameon=True, fontsize=12)
@@ -280,6 +318,43 @@ for i in range(2):
             ax.set_yticklabels([]) # 隐藏右图 Y 轴标签
            
     ax.set_xlim(min(xmin_wcs, xmax_wcs), max(xmin_wcs, xmax_wcs))
+
+    ax_res = fig.add_subplot(gs_tr[1, i])
+    ax_res.imshow(
+        pv_residuals[i],
+        origin='lower',
+        cmap='RdBu_r',
+        norm=resid_norm,
+        extent=ext_pv,
+        aspect='auto'
+    )
+    ax_res.axhline(y=0, color='black', lw=0.8)
+    ax_res.axvline(x=0, color='black', lw=0.8)
+    ax_res.set_ylim(-270, 270)
+    ax_res.set_xlim(min(xmin_wcs, xmax_wcs), max(xmin_wcs, xmax_wcs))
+    ax_res.set_xlabel('Offset (arcsec)')
+    ax_res.text(
+        0.05, 0.08,
+        'Residual',
+        transform=ax_res.transAxes,
+        fontsize=10,
+        fontweight='bold',
+        ha='left'
+    )
+    if i == 0:
+        ax_res.set_ylabel(r'$\Delta V_{\mathrm{los}}$ (km s$^{-1}$)', fontsize=labsize)
+    else:
+        ax_res.set_yticklabels([])
+
+ax_pv_res_cb = fig.add_subplot(gs_tr[1, 2])
+cb_pv_res = ColorbarBase(
+    ax_pv_res_cb,
+    orientation='vertical',
+    cmap='RdBu_r',
+    norm=resid_norm
+)
+cb_pv_res.set_label('PV residual', fontsize=12)
+cb_pv_res.outline.set_linewidth(0.5)
 # ============================================================
 # 左下：VRAD
 # ============================================================
@@ -338,5 +413,5 @@ ax_pa.set_ylim(120 - 10, 120 + 10)
 
 plt.tight_layout()
 
-plt.savefig("single_galaxy_error_with_maps_pv_2.pdf", bbox_inches="tight")
+plt.savefig("single_galaxy_error_with_maps_pv_residual.pdf", bbox_inches="tight")
 plt.show()
