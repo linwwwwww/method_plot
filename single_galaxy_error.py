@@ -1,50 +1,39 @@
 import numpy as np
 import os
+import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.gridspec import GridSpec
+from matplotlib.lines import Line2D
+from matplotlib.ticker import MultipleLocator
+
 from astropy.io import fits
 from astropy.visualization import PercentileInterval, PowerStretch, ImageNormalize
 from copy import copy
-from matplotlib.lines import Line2D
+
 
 # ============================================================
 # 1. 全局样式
 # ============================================================
-plt.rcParams['axes.labelsize'] = 14
-plt.rcParams['xtick.direction'] = 'in'
-plt.rcParams['ytick.direction'] = 'in'
-plt.rcParams['xtick.top'] = True
-plt.rcParams['ytick.right'] = True
-mpl.rcParams['contour.negative_linestyle'] = 'solid'
-plt.rc('font', family='sans-serif', size=10)
+plt.style.use("/net/dataserver3/data/users/linn/pic_style/science3.mplstyle")
+
+plt.rcParams["axes.labelsize"] = 15
+plt.rcParams["xtick.direction"] = "in"
+plt.rcParams["ytick.direction"] = "in"
+plt.rcParams["xtick.top"] = True
+plt.rcParams["ytick.right"] = True
+mpl.rcParams["contour.negative_linestyle"] = "solid"
+plt.rc("font", family="sans-serif", size=10)
 
 params = {
-    'text.usetex': False,
-    'mathtext.fontset': 'cm',
-    'mathtext.default': 'regular'
+    "text.usetex": False,
+    "mathtext.fontset": "cm",
+    "mathtext.default": "regular",
 }
 plt.rcParams.update(params)
 
-labsize = 14
-
-
-def load_table(path):
-    with open(path) as f:
-        lines = f.readlines()
-
-    header_idx = next(i for i, line in enumerate(lines) if line.strip())
-    header_line = lines[header_idx].strip()
-    header_is_comment = header_line.startswith("#")
-    header = header_line.lstrip("#").split()
-    data = np.loadtxt(
-        path,
-        comments="#",
-        skiprows=0 if header_is_comment else header_idx + 1
-    )
-    data = np.atleast_2d(data)
-    return {name: data[:, i] for i, name in enumerate(header)}
 
 # ============================================================
 # 2. 路径与数据
@@ -57,9 +46,10 @@ galaxy = "ring_v200_R50_PAk0.05_TP450_VRk0.09_TP300_INC60"
 outfolder = RING_MODEL1123 + galaxy + "/second_step_check_sinw/"
 gname = "SNR10Res10mod"
 
-recorver = load_table(outfolder + "rings_final2.txt")
-true_ = load_table(INITIAL_1123 + galaxy + ".txt")
-error_ = load_table(RING_MODEL1123 + galaxy + "/bootstrap_error.txt")
+recorver = pd.read_csv(outfolder + "rings_final2.txt", delimiter=r"\s+")
+true_ = pd.read_csv(INITIAL_1123 + galaxy + ".txt", delimiter=r"\s+")
+error_ = pd.read_csv(RING_MODEL1123 + galaxy + "/bootstrap_error.txt", delimiter=r"\s+")
+
 
 # ============================================================
 # 3. 读取 ring 参数
@@ -67,12 +57,12 @@ error_ = load_table(RING_MODEL1123 + galaxy + "/bootstrap_error.txt")
 rad, inc, pa, xpos, ypos, vsys = np.genfromtxt(
     outfolder + "rings_final2.txt",
     usecols=(1, 4, 5, 9, 10, 11),
-    unpack=True
+    unpack=True,
 )
 
 xcen_m, ycen_m, inc_m, pa_m, vsys_m = np.nanmean(
     (xpos, ypos, inc, pa, vsys),
-    axis=1
+    axis=1,
 )
 
 # 和你的 map 脚本保持一致
@@ -90,11 +80,13 @@ try:
 except TypeError:
     nr = 1
 
+
 # ============================================================
 # 4. 读取 moment map
 # ============================================================
 f1 = fits.open(outfolder + "/maps/" + gname + "_1mom.fits")
 mom1 = f1[0].data[ymin:ymax + 1, xmin:xmax + 1]
+f1.close()
 
 mod_file_list = sorted([
     f for f in os.listdir(outfolder + "/maps/")
@@ -110,17 +102,21 @@ maskmap[np.isfinite(mom1)] = 1
 
 ext_map = [0, xmax - xmin, 0, ymax - ymin]
 
+
 # ============================================================
 # 5. 开始画图
 # ============================================================
 fig = plt.figure(figsize=(20, 12), dpi=150)
+
 gs = GridSpec(
     2, 2,
     figure=fig,
-    wspace=0.2,
-    hspace=0.2,
-    height_ratios=[0.9, 1.0]
+    wspace=0.25,
+    hspace=0.32,
+    height_ratios=[0.9, 1.0],
+    width_ratios=[1.15, 1.0],
 )
+
 
 # ============================================================
 # 左上：DATA / MODEL / RESIDUAL velocity map
@@ -128,26 +124,52 @@ gs = GridSpec(
 gs_tl_main = gs[0, 0].subgridspec(
     2, 1,
     height_ratios=[0.88, 0.08],
-    hspace=0.23
+    hspace=0.3,
 )
+
+# 三列：DATA / MODEL / RESIDUAL
 gs_tl_maps = gs_tl_main[0, 0].subgridspec(1, 3, wspace=0.05)
+
+# 两个 colorbar：DATA+MODEL 共用一个，RESIDUAL 单独一个
+gs_tl_cb = gs_tl_main[1, 0].subgridspec(
+    1, 3,
+    width_ratios=[1, 1, 1],
+    wspace=0.05,
+)
 
 cmap_vel = copy(plt.get_cmap("RdBu_r", 25))
 cmap_vel.set_bad("w", 1.0)
 
+# DATA 和 MODEL 使用同一个速度色标
 data_for_norm = mom1 - vsys_m
 interval = PercentileInterval(99.5)
 vmin, vmax = interval.get_limits(data_for_norm)
 vabs = max(abs(vmin), abs(vmax))
-
 norm_m = mpl.colors.Normalize(vmin=-vabs, vmax=vabs)
+
+# Residual velocity field: DATA - MODEL
+# 注意这里不需要再减 vsys，因为系统速度会抵消
+res_mom1 = (mom1 - mom1_mod) * maskmap
+
+finite_res = res_mom1[np.isfinite(res_mom1)]
+if len(finite_res) > 0:
+    vabs_res = np.nanpercentile(np.abs(finite_res), 99.5)
+else:
+    vabs_res = 1.0
+
+if not np.isfinite(vabs_res) or vabs_res == 0:
+    vabs_res = 1.0
+
+norm_res = mpl.colors.Normalize(vmin=-vabs_res, vmax=vabs_res)
 
 map_list = [
     mom1 - vsys_m,
     mom1_mod - vsys_m,
-    mom1 - mom1_mod
+    res_mom1,
 ]
+
 titles = ["DATA", "MODEL", "RESIDUAL"]
+norm_list = [norm_m, norm_m, norm_res]
 
 # global major axis from mean PA
 x_major = np.arange(0, xmax - xmin, 0.1)
@@ -160,201 +182,322 @@ for j, d in enumerate(map_list):
         d * maskmap,
         origin="lower",
         cmap=cmap_vel,
-        norm=norm_m,
+        norm=norm_list[j],
         extent=ext_map,
         aspect="equal",
-        interpolation="nearest"
+        interpolation="nearest",
     )
 
     ax.plot(xcen, ycen, "x", color="black", markersize=7, mew=1.4)
 
-    # green zero-velocity contour
-    ax.contour(
-        d * maskmap,
-        levels=[0],
-        colors="green",
-        origin="lower",
-        extent=ext_map,
-        linewidths=1.0
-    )
+    # DATA 和 MODEL：画零速度线、平均主轴和 PA trace
+    if j < 2:
+        ax.contour(
+            d * maskmap,
+            levels=[0],
+            colors="green",
+            origin="lower",
+            extent=ext_map,
+            linewidths=1.0,
+        )
 
-    # mean major axis
-    ax.plot(x_major, y_major, "--", color="k", linewidth=1.0, alpha=0.8)
-
-    # warped PA trace, same logic as map script
-    if nr > 5 and not np.all(np.diff(pa) == 0):
-        x_pix = rad_pix * np.cos(np.radians(pa - 90.0))
-        y_pix = rad_pix * np.sin(np.radians(pa - 90.0))
-
+        # mean major axis
         ax.plot(
-            xcen - x_pix, ycen - y_pix,
-            "-",
-            color="grey",
-            lw=1.2,
-            alpha=0.7
-        )
-        ax.plot(
-            xcen + x_pix, ycen + y_pix,
-            "-",
-            color="grey",
-            lw=1.2,
-            alpha=0.7
+            x_major,
+            y_major,
+            "--",
+            color="k",
+            linewidth=1.0,
+            alpha=0.8,
         )
 
-    # outer ellipse
-    if j != 2 and nr > 3:
-        axmaj = rad_pix[-1]
-        axmin = axmaj * np.cos(np.radians(inc_m))
-        posa = np.radians(pa_m - 90.0)
+        # warped PA trace
+        if nr > 5 and not np.all(np.diff(pa) == 0):
+            x_pix = rad_pix * np.cos(np.radians(pa - 90.0))
+            y_pix = rad_pix * np.sin(np.radians(pa - 90.0))
 
-        t = np.linspace(0, 2 * np.pi, 200)
-        xt = (
-            xcen
-            + axmaj * np.cos(posa) * np.cos(t)
-            - axmin * np.sin(posa) * np.sin(t)
-        )
-        yt = (
-            ycen
-            + axmaj * np.sin(posa) * np.cos(t)
-            + axmin * np.cos(posa) * np.sin(t)
-        )
-        #ax.plot(xt, yt, "-", color="k", lw=0.8, alpha=0.8)
+            ax.plot(
+                xcen - x_pix,
+                ycen - y_pix,
+                "-",
+                color="grey",
+                lw=1.2,
+                alpha=0.7,
+            )
+            ax.plot(
+                xcen + x_pix,
+                ycen + y_pix,
+                "-",
+                color="grey",
+                lw=1.2,
+                alpha=0.7,
+            )
+
+    # RESIDUAL：可选画零残差线
+    # if j == 2:
+    #     try:
+    #         ax.contour(
+    #             res_mom1,
+    #             levels=[0],
+    #             colors="k",
+    #             origin="lower",
+    #             extent=ext_map,
+    #             linewidths=0.8,
+    #             alpha=0.7,
+    #         )
+    #     except Exception:
+    #         pass
 
     ax.set_xlim(ext_map[0], ext_map[1])
     ax.set_ylim(ext_map[2], ext_map[3])
-    ax.set_xlabel("X (pix)")
-    ax.set_title(titles[j], fontsize=12, fontweight="bold")
+
+    ax.xaxis.set_major_locator(MultipleLocator(100))
+    ax.yaxis.set_major_locator(MultipleLocator(100))
+
+    ax.set_xlabel("x (pix)")
+    ax.set_title(titles[j], fontsize=15, fontweight="bold")
 
     if j == 0:
-        ax.set_ylabel("Y (pix)")
+        ax.set_ylabel("y (pix)")
     else:
         ax.set_yticklabels([])
 
-# colorbar for maps
-ax_cb_tl = fig.add_subplot(gs_tl_main[1, 0])
-cb_tl = ColorbarBase(
-    ax_cb_tl,
+# DATA + MODEL colorbar
+ax_cb_vel = fig.add_subplot(gs_tl_cb[0, 0:2])
+cb_vel = ColorbarBase(
+    ax_cb_vel,
     orientation="horizontal",
     cmap=cmap_vel,
-    norm=norm_m
+    norm=norm_m,
 )
-cb_tl.set_label(r"$\Delta V_{\mathrm{los}}$ (km s$^{-1}$)", fontsize=14)
-cb_tl.outline.set_linewidth(0.5)
+cb_vel.set_label(r"$\Delta V_{\mathrm{los}}$ (km/s)", fontsize=14)
+cb_vel.outline.set_linewidth(0.5)
+
+# RESIDUAL colorbar
+ax_cb_res = fig.add_subplot(gs_tl_cb[0, 2])
+cb_res = ColorbarBase(
+    ax_cb_res,
+    orientation="horizontal",
+    cmap=cmap_vel,
+    norm=norm_res,
+)
+cb_res.set_label(r"$V_{\mathrm{res}}$ (km/s)", fontsize=14)
+cb_res.outline.set_linewidth(0.5)
+
 
 # ============================================================
 # 右上：PV diagrams
 # ============================================================
 gs_tr = gs[0, 1].subgridspec(
-    2, 3,
+    2,
+    3,
     height_ratios=[1.0, 0.62],
     width_ratios=[1.0, 1.0, 0.055],
     hspace=0.12,
-    wspace=0.12
+    wspace=0.12,
 )
 
-# PV 数据准备
 zmin, zmax = 13, 187
-pvs_dir = outfolder + 'pvs/'
-data_pv_a = gname + '_pv_a_azim.fits'
-data_pv_b = gname + '_pv_b_azim.fits'
-if not os.path.exists(pvs_dir + data_pv_a):
-    data_pv_a = gname + '_pv_a.fits'
-if not os.path.exists(pvs_dir + data_pv_b):
-    data_pv_b = gname + '_pv_b.fits'
 
-image_maj = fits.open(pvs_dir + data_pv_a)
-image_min = fits.open(pvs_dir + data_pv_b)
+image_maj = fits.open(outfolder + "pvs/" + gname + "_pv_a.fits")
+image_min = fits.open(outfolder + "pvs/" + gname + "_pv_b.fits")
+mask_pv_maj = fits.open(outfolder + "pvs/" + gname + "mask_pv_a.fits")
+mask_pv_min = fits.open(outfolder + "pvs/" + gname + "mask_pv_b.fits")
 
-mod_pv_a = gname + 'mod_pv_a_azim.fits'
-mod_pv_b = gname + 'mod_pv_b_azim.fits'
-if not os.path.exists(pvs_dir + mod_pv_a):
-    mod_pv_a = sorted([f for f in os.listdir(pvs_dir) if 'pv_a_azim.fits' in f or 'pv_a_local.fits' in f])[0]
-if not os.path.exists(pvs_dir + mod_pv_b):
-    mod_pv_b = sorted([f for f in os.listdir(pvs_dir) if 'pv_b_azim.fits' in f or 'pv_b_local.fits' in f])[0]
-im_mod_maj = fits.open(outfolder + 'pvs/' + mod_pv_a)
-im_mod_min = fits.open(outfolder + 'pvs/' + mod_pv_b)
+mod_pv_a = sorted([
+    f for f in os.listdir(outfolder + "pvs/")
+    if "pv_a_azim.fits" in f or "pv_a_local.fits" in f
+])[0]
 
-# 坐标计算 (简化用于展示)
+mod_pv_b = sorted([
+    f for f in os.listdir(outfolder + "pvs/")
+    if "pv_b_azim.fits" in f or "pv_b_local.fits" in f
+])[0]
+
+im_mod_maj = fits.open(outfolder + "pvs/" + mod_pv_a)
+im_mod_min = fits.open(outfolder + "pvs/" + mod_pv_b)
+
 head = image_maj[0].header
-crpix, cdelt, crval = head['CRPIX1'], head['CDELT1'], head['CRVAL1']
-xminpv, xmaxpv = int(crpix - 1 - 162), int(crpix - 1 + 162)
+crpix = head["CRPIX1"]
+cdelt = head["CDELT1"]
+crval = head["CRVAL1"]
+
+xminpv = int(crpix - 1 - 162)
+xmaxpv = int(crpix - 1 + 162)
+
 xmin_wcs = ((xminpv + 1 - 0.5 - crpix) * cdelt + crval) * 3600
 xmax_wcs = ((xmaxpv + 1 + 0.5 - crpix) * cdelt + crval) * 3600
+
 zmin_wcs, zmax_wcs = 255.25, -182.25
 ext_pv = [xmin_wcs, xmax_wcs, zmin_wcs - vsys_m, zmax_wcs - vsys_m]
 
-# 统一归一化
 cont = 0.000675824
 v_levels = np.array([1, 2, 4, 8, 16, 32, 64]) * cont
-norm_pv = ImageNormalize(vmin=cont, vmax=image_maj[0].data.max()*0.7, stretch=PowerStretch(0.5))
 
-# 绘制
-pv_datas = [image_maj[0].data[zmin:zmax+1, xminpv:xmaxpv+1], image_min[0].data[zmin:zmax+1, xminpv:xmaxpv+1]]
-pv_mods = [im_mod_maj[0].data[zmin:zmax+1, xminpv:xmaxpv+1], im_mod_min[0].data[zmin:zmax+1, xminpv:xmaxpv+1]]
-pv_residuals = [data - model for data, model in zip(pv_datas, pv_mods)]
-phi_labels = [r'$\phi = 120^\circ$', r'$\phi = 210^\circ$']
-resid_vmax = np.nanpercentile(np.abs(np.concatenate([r[np.isfinite(r)] for r in pv_residuals])), 99.0)
-resid_norm = mpl.colors.Normalize(vmin=-resid_vmax, vmax=resid_vmax)
+norm_pv = ImageNormalize(
+    vmin=cont,
+    vmax=image_maj[0].data.max() * 0.7,
+    stretch=PowerStretch(0.5),
+)
+
+pv_datas = [
+    image_maj[0].data[zmin:zmax + 1, xminpv:xmaxpv + 1],
+    image_min[0].data[zmin:zmax + 1, xminpv:xmaxpv + 1],
+]
+
+pv_mods = [
+    im_mod_maj[0].data[zmin:zmax + 1, xminpv:xmaxpv + 1],
+    im_mod_min[0].data[zmin:zmax + 1, xminpv:xmaxpv + 1],
+]
+
+pv_masks = [
+    mask_pv_maj[0].data[zmin:zmax + 1, xminpv:xmaxpv + 1],
+    mask_pv_min[0].data[zmin:zmax + 1, xminpv:xmaxpv + 1],
+]
+pv_masks = [
+    np.where(np.isfinite(mask) & (mask != 0), 1.0, np.nan)
+    for mask in pv_masks
+]
+pv_residuals = [
+    (data - model) * mask
+    for data, model, mask in zip(pv_datas, pv_mods, pv_masks)
+]
+pv_resid_values = np.concatenate([
+    resid[np.isfinite(resid)] for resid in pv_residuals
+])
+pv_resid_vmax = np.nanpercentile(np.abs(pv_resid_values), 99.0)
+norm_pv_res = mpl.colors.Normalize(vmin=-pv_resid_vmax, vmax=pv_resid_vmax)
+
+phi_labels = [r"$\phi = 120^\circ$", r"$\phi = 210^\circ$"]
 
 for i in range(2):
     ax = fig.add_subplot(gs_tr[0, i])
-    ax.imshow(pv_datas[i], origin='lower', cmap='Greys', norm=norm_pv, extent=ext_pv, aspect='auto', alpha=0.3)
-    ax.contour(pv_datas[i], v_levels, origin='lower', linewidths=0.8, colors='#00008B', extent=ext_pv)
-    ax.contour(pv_mods[i], v_levels, origin='lower', linewidths=1.2, colors='#B22222', extent=ext_pv)
-    ax.axhline(y=0, color='black', lw=1); ax.axvline(x=0, color='black', lw=1)
-    ax.set_ylim(-270,270)
-    ax.set_xlabel('Offset (arcsec)')
-    ax.text(0.8, 0.05, phi_labels[i], transform=ax.transAxes, fontsize=10, fontweight='bold', ha='center')
-    if i == 0: 
-            ax.set_ylabel(r'$\Delta V_{\mathrm{los}}$ (km s$^{-1}$)', fontsize=labsize)
-            # 叠加旋转曲线点
-            if "radius_pts" in globals() and "vlos_pts" in globals():
-                ax.plot(radius_pts, vlos_pts, 'y.', markersize=7, markeredgecolor='olive', alpha=0.6)
-            # 添加图例
-            legend_elements = [Line2D([0], [0], color='#00008B', lw=1, label='DATA'),
-                               Line2D([0], [0], color='#B22222', lw=1.5, label='MODEL')]
-            ax.legend(handles=legend_elements, loc='lower left', frameon=True, fontsize=12)
+
+    ax.imshow(
+        pv_datas[i],
+        origin="lower",
+        cmap="Greys",
+        norm=norm_pv,
+        extent=ext_pv,
+        aspect="auto",
+        alpha=0.3,
+    )
+
+    ax.contour(
+        pv_datas[i],
+        v_levels,
+        origin="lower",
+        linewidths=0.8,
+        colors="#00008B",
+        extent=ext_pv,
+    )
+
+    ax.contour(
+        pv_mods[i],
+        v_levels,
+        origin="lower",
+        linewidths=1.2,
+        colors="#B22222",
+        extent=ext_pv,
+    )
+
+    ax.axhline(y=0, color="black", lw=1)
+    ax.axvline(x=0, color="black", lw=1)
+
+    ax.set_ylim(-270, 270)
+    ax.set_xlabel("Offset (arcsec)")
+
+    ax.text(
+        0.8,
+        0.05,
+        phi_labels[i],
+        transform=ax.transAxes,
+        fontsize=10,
+        fontweight="bold",
+        ha="center",
+    )
+
+    if i == 0:
+        ax.set_ylabel(r"$\Delta V_{\mathrm{los}}$ (km/s)")
+
+        # 如果你前面定义了 radius_pts 和 vlos_pts，就叠加旋转曲线点
+        if "radius_pts" in globals() and "vlos_pts" in globals():
+            ax.plot(
+                radius_pts,
+                vlos_pts,
+                "y.",
+                markersize=7,
+                markeredgecolor="olive",
+                alpha=0.6,
+            )
+
+        legend_elements = [
+            Line2D([0], [0], color="#00008B", lw=1, label="DATA"),
+            Line2D([0], [0], color="#B22222", lw=1.5, label="MODEL"),
+        ]
+        ax.legend(
+            handles=legend_elements,
+            loc="lower left",
+            frameon=True,
+            fontsize=13,
+        )
     else:
-            ax.set_yticklabels([]) # 隐藏右图 Y 轴标签
-           
+        ax.set_yticklabels([])
+
     ax.set_xlim(min(xmin_wcs, xmax_wcs), max(xmin_wcs, xmax_wcs))
 
     ax_res = fig.add_subplot(gs_tr[1, i])
     ax_res.imshow(
         pv_residuals[i],
-        origin='lower',
-        cmap='RdBu_r',
-        norm=resid_norm,
+        origin="lower",
+        cmap="RdBu_r",
+        norm=norm_pv_res,
         extent=ext_pv,
-        aspect='auto'
+        aspect="auto",
     )
-    ax_res.axhline(y=0, color='black', lw=0.8)
-    ax_res.axvline(x=0, color='black', lw=0.8)
+
+    ax_res.axhline(y=0, color="black", lw=0.8)
+    ax_res.axvline(x=0, color="black", lw=0.8)
+
     ax_res.set_ylim(-270, 270)
     ax_res.set_xlim(min(xmin_wcs, xmax_wcs), max(xmin_wcs, xmax_wcs))
-    ax_res.set_xlabel('Offset (arcsec)')
+    ax_res.set_xlabel("Offset (arcsec)")
     ax_res.text(
-        0.05, 0.08,
-        'Residual',
+        0.05,
+        0.08,
+        "Residual",
         transform=ax_res.transAxes,
         fontsize=10,
-        fontweight='bold',
-        ha='left'
+        fontweight="bold",
+        ha="left",
     )
+
     if i == 0:
-        ax_res.set_ylabel(r'$\Delta V_{\mathrm{los}}$ (km s$^{-1}$)', fontsize=labsize)
+        ax_res.set_ylabel(r"$\Delta V_{\mathrm{los}}$ (km/s)")
     else:
         ax_res.set_yticklabels([])
 
-ax_pv_res_cb = fig.add_subplot(gs_tr[1, 2])
-cb_pv_res = ColorbarBase(
-    ax_pv_res_cb,
-    orientation='vertical',
-    cmap='RdBu_r',
-    norm=resid_norm
+ax_cb_pv = fig.add_subplot(gs_tr[0, 2])
+cb_pv = ColorbarBase(
+    ax_cb_pv,
+    orientation="vertical",
+    cmap=plt.get_cmap("Greys"),
+    norm=norm_pv,
 )
-cb_pv_res.set_label('PV residual', fontsize=12)
+cb_pv.set_label("Intensity", fontsize=12)
+cb_pv.outline.set_linewidth(0.5)
+
+ax_cb_pv_res = fig.add_subplot(gs_tr[1, 2])
+cb_pv_res = ColorbarBase(
+    ax_cb_pv_res,
+    orientation="vertical",
+    cmap=plt.get_cmap("RdBu_r"),
+    norm=norm_pv_res,
+)
+cb_pv_res.set_label("Residual", fontsize=12)
 cb_pv_res.outline.set_linewidth(0.5)
+
+
 # ============================================================
 # 左下：VRAD
 # ============================================================
@@ -364,7 +507,7 @@ ax_vrad.plot(
     true_["RAD(arcs)"],
     true_["VRAD(km/s)"],
     "k--",
-    label="True"
+    label="True",
 )
 
 ax_vrad.errorbar(
@@ -375,13 +518,14 @@ ax_vrad.errorbar(
     color="tab:blue",
     label="Recovered",
     markersize=4,
-    capsize=2
+    capsize=2,
 )
 
 ax_vrad.set_xlabel("Radius (arcsec)")
-ax_vrad.set_ylabel(r"$V_{\mathrm{rad}}$ (km s$^{-1}$)")
-ax_vrad.legend(fontsize=14)
+ax_vrad.set_ylabel(r"$V_{\mathrm{rad}}$ (km/s)")
+ax_vrad.legend(fontsize=18, frameon=True)
 ax_vrad.set_ylim(-30, 30)
+
 
 # ============================================================
 # 右下：PA
@@ -392,7 +536,7 @@ ax_pa.plot(
     true_["RAD(arcs)"],
     true_["P.A.(deg)"],
     "k--",
-    label="True"
+    label="True",
 )
 
 ax_pa.errorbar(
@@ -403,15 +547,32 @@ ax_pa.errorbar(
     color="tab:red",
     label="Recovered",
     markersize=4,
-    capsize=2
+    capsize=2,
 )
 
 ax_pa.set_xlabel("Radius (arcsec)")
 ax_pa.set_ylabel("P.A. (deg)")
-ax_pa.legend(fontsize=14)
+ax_pa.legend(fontsize=18, frameon=True)
 ax_pa.set_ylim(120 - 10, 120 + 10)
 
+
+# ============================================================
+# 保存
+# ============================================================
 plt.tight_layout()
 
-plt.savefig("single_galaxy_error_with_maps_pv_residual.pdf", bbox_inches="tight")
+plt.savefig(
+    "single_galaxy_error_with_maps_pv_2_residual.pdf",
+    bbox_inches="tight",
+)
+
 plt.show()
+
+
+# Close FITS files
+image_maj.close()
+image_min.close()
+mask_pv_maj.close()
+mask_pv_min.close()
+im_mod_maj.close()
+im_mod_min.close()
