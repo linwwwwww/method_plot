@@ -365,8 +365,11 @@ pv_residuals = [
 pv_resid_values = np.concatenate([
     resid[np.isfinite(resid)] for resid in pv_residuals
 ])
-pv_resid_vmax = np.nanpercentile(np.abs(pv_resid_values), 99.0)
-norm_pv_res = mpl.colors.Normalize(vmin=-pv_resid_vmax, vmax=pv_resid_vmax)
+norm_pv_res = ImageNormalize(
+    vmin=np.nanpercentile(pv_resid_values, 1.0),
+    vmax=np.nanpercentile(pv_resid_values, 99.0),
+    stretch=PowerStretch(0.5),
+)
 
 phi_labels = [r"$\phi = 120^\circ$", r"$\phi = 210^\circ$"]
 
@@ -450,7 +453,7 @@ for i in range(2):
     ax_res.imshow(
         pv_residuals[i],
         origin="lower",
-        cmap="RdBu_r",
+        cmap="Greys",
         norm=norm_pv_res,
         extent=ext_pv,
         aspect="auto",
@@ -491,10 +494,10 @@ ax_cb_pv_res = fig.add_subplot(gs_tr[1, 2])
 cb_pv_res = ColorbarBase(
     ax_cb_pv_res,
     orientation="vertical",
-    cmap=plt.get_cmap("RdBu_r"),
+    cmap=plt.get_cmap("Greys"),
     norm=norm_pv_res,
 )
-cb_pv_res.set_label("Residual", fontsize=12)
+cb_pv_res.set_label("Intensity", fontsize=12)
 cb_pv_res.outline.set_linewidth(0.5)
 
 
