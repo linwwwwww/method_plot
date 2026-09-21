@@ -82,51 +82,10 @@ def get_rings_data(outfolder):
         print(f"Error reading rings from {path}: {e}")
         return None
 
-def draw_major_minor_axes(ax, p_data, xcen, ycen):
-    """Draw the same major/minor axis overlay used by the velocity-field panels."""
-    rad = p_data['rad']
-    pa = p_data['pa']
-    pa_m = p_data['pa_m']
-    rad_pix = rad / 4.0
-    rad_pix_arr = np.atleast_1d(rad_pix)
-    pa_arr = np.atleast_1d(pa)
-
-    # Global Major Axis (Black Dashed)
-    r_line = np.linspace(-np.nanmax(rad_pix_arr), np.nanmax(rad_pix_arr), 1000)
-    x_line = r_line * np.cos(np.radians(pa_m - 90)) + xcen
-    y_line = r_line * np.sin(np.radians(pa_m - 90)) + ycen
-    ax.plot(x_line, y_line, '--', color='k', linewidth=1)
-
-    # Global Minor Axis (Black Dashed)
-    x_line_min = -r_line * np.cos(np.radians(pa_m)) + xcen
-    y_line_min = -r_line * np.sin(np.radians(pa_m)) + ycen
-    ax.plot(x_line_min, y_line_min, '--', color='k', linewidth=1)
-
-    # Warped Major Axis / Locus
-    nr = len(rad_pix_arr)
-
-    if nr < 10:
-        x_pix = rad_pix_arr * np.cos(np.radians(pa_m - 90))
-        y_pix = rad_pix_arr * np.sin(np.radians(pa_m - 90))
-        ax.scatter(x_pix + xcen, y_pix + ycen, c='grey', s=12)
-        ax.scatter(xcen - x_pix, ycen - y_pix, c='grey', s=12)
-
-    if np.std(pa_arr) < 1e-6:
-        pa_use = pa_m
-    else:
-        pa_use = pa_arr
-
-    if nr > 5 and not np.all(np.diff(pa_arr) == 0):
-        x_pix = rad_pix_arr * np.cos(np.radians(pa_use - 90))
-        y_pix = rad_pix_arr * np.sin(np.radians(pa_use - 90))
-        ax.plot(xcen - x_pix, ycen - y_pix, '-', color='grey', lw=1)
-        ax.plot(x_pix + xcen, y_pix + ycen, '-', color='grey', lw=1)
-
-def plot_mom1(ax, outfolder, p_data, is_bottom_row, residual_data=None):
+def plot_mom1(ax, outfolder, p_data, is_bottom_row):
     """
     第1列：Data Velocity Field
     包含：Global Major(黑虚), Warped Axis(灰实/点), Green Contour(V=0)
-    以及可选的 residual contour 叠加
     """
     if p_data is None: 
         ax.text(0.5,0.5, "No Rings Data", ha='center')
@@ -136,6 +95,9 @@ def plot_mom1(ax, outfolder, p_data, is_bottom_row, residual_data=None):
     vsys_m = p_data['vsys_m']
     xcen = p_data['xcen_m'] - xmin
     ycen = p_data['ycen_m'] - ymin
+    rad = p_data['rad']
+    pa = p_data['pa']
+    pa_m = p_data['pa_m']
     
     # 读取 Data Map (注意：这里读取的是 DATA 的 mom1)
     fpath = os.path.join(outfolder, 'maps', gname + '_azim_1mom.fits')
@@ -159,8 +121,26 @@ def plot_mom1(ax, outfolder, p_data, is_bottom_row, residual_data=None):
     im = ax.imshow(data_to_plot, origin='lower', cmap=cmap, norm=norm, aspect='equal', extent=ext, interpolation='nearest')
     ax.plot(xcen, ycen, 'x', color='#000000', markersize=7, mew=1.5)
 
-    # --- 绘制辅助线 ---
-    draw_major_minor_axes(ax, p_data, xcen, ycen)
+    # --- 绘制辅助线 (基于您的代码逻辑) ---
+    x_grid = np.arange(0, xmax - xmin, 0.1)
+    
+    # 1. Global Major Axis (Black Dashed)
+    # y_maj = np.tan(np.radians(pa_m - 90)) * (x_grid - xcen) + ycen
+    # ax.plot(x_grid, y_maj, '--', color='k', linewidth=1, alpha=0.8)
+    rad_pix = rad / 4.0
+    r_line = np.linspace(-max(rad_pix), max(rad_pix), 1000)
+    
+    x_line = r_line * np.cos(np.radians(pa_m - 90)) + xcen
+    y_line = r_line * np.sin(np.radians(pa_m - 90)) + ycen
+    
+    ax.plot(x_line, y_line, '--', color='k', linewidth=1)
+    # 2. Global Minor Axis (Grey Solid)
+    # y_min = np.tan(np.radians(pa_m)) * (x_grid - xcen) + ycen
+    # ax.plot(x_grid, y_min, '--', color='k', linewidth=1, alpha=0.8)
+    x_line_min = -r_line * np.cos(np.radians(pa_m )) + xcen
+    y_line_min = -r_line * np.sin(np.radians(pa_m)) + ycen
+    
+    ax.plot(x_line_min, y_line_min, '--', color='k', linewidth=1)
     ax.set_xlim(-10, xmax - xmin+10)
     ax.set_ylim(-10, ymax - ymin+10)
     
@@ -174,7 +154,29 @@ def plot_mom1(ax, outfolder, p_data, is_bottom_row, residual_data=None):
     else:
         ax.set_xticklabels([])
     
-    # Isovelocity Contour (Green, Level=0)
+
+    # 3. Warped Axis / Locus (复用您的代码)
+    rad_pix = rad / 4.0  # 您的缩放比例
+    try: nr = len(rad_pix)
+    except: nr = 1
+    
+    # 绘制弯曲的 Major Axis
+    if nr < 10:
+        x_pix = rad_pix * np.cos(np.radians(pa_m - 90))
+        y_pix = rad_pix * np.sin(np.radians(pa_m - 90))
+        ax.scatter(x_pix + xcen, y_pix + ycen, c='grey', s=12)
+        ax.scatter(xcen - x_pix, ycen - y_pix, c='grey', s=12)
+    if np.std(pa) < 1e-6:
+        pa_use =  pa_m
+    else:
+        pa_use = pa
+    if nr > 5 and not np.all(np.diff(pa) == 0):
+        x_pix = rad_pix * np.cos(np.radians(pa_use - 90))
+        y_pix = rad_pix * np.sin(np.radians(pa_use - 90))
+        ax.plot(xcen - x_pix, ycen - y_pix, '-', color='grey', lw=1)
+        ax.plot(x_pix + xcen, y_pix + ycen, '-', color='grey', lw=1)
+
+    # 4. Isovelocity Contour (Green, Level=0)
     maskmap = np.copy(mom1)
     maskmap[mom1==mom1] = 1
     ax.contour(data_to_plot * maskmap, levels=[0], colors='green', origin='lower', extent=ext, linewidths=1.2)
@@ -292,61 +294,6 @@ def get_initial_profile_path(barolo_path):
     
     return txt_path
 
-def plot_residual_mom1(ax, residual_data, p_data, is_bottom_row, current_mom1=None, first_mom1=None, global_norm=None):
-    """
-    绘制残差速度场（当前模型 - 纯旋转模型）
-    并在边界处绘制两个速度场的最外围的圈
-    """
-    if residual_data is None or p_data is None:
-        ax.text(0.5, 0.5, "No Residual Data", ha='center')
-        return None, None
-
-    xcen = p_data['xcen_m'] - xmin
-    ycen = p_data['ycen_m'] - ymin
-    data_to_plot = residual_data
-    ext = [0, xmax - xmin, 0, ymax - ymin]
-
-    if global_norm is None:
-        interval = PercentileInterval(100)
-        vmin, vmax = interval.get_limits(data_to_plot)
-        vabs = max(abs(vmin), abs(vmax))
-        norm = mpl.colors.Normalize(vmin=-vabs, vmax=vabs)
-    else:
-        norm = global_norm
-
-    cmap = copy(cmap_vel)
-    cmap.set_bad('w', 1.)
-
-    im = ax.imshow(data_to_plot, origin='lower', cmap=cmap, norm=norm, aspect='equal', extent=ext, interpolation='nearest')
-    ax.plot(xcen, ycen, 'x', color='#000000', markersize=7, mew=1.5)
-    ax.set_xlim(-10, xmax - xmin + 10)
-    ax.set_ylim(-10, ymax - ymin + 10)
-
-    if is_bottom_row:
-        ax.set_xlabel('x (pix)')
-    else:
-        ax.set_xticklabels([])
-
-    if current_mom1 is not None:
-        mask_current = ~np.isnan(current_mom1)
-        ax.contour(mask_current.astype(float), levels=[0.5], colors='blue', origin='lower', extent=ext, linewidths=1.5)
-
-    if first_mom1 is not None:
-        mask_first = ~np.isnan(first_mom1)
-        ax.contour(mask_first.astype(float), levels=[0.5], colors='red', origin='lower', extent=ext, linewidths=1.5)
-
-    # 和第一列使用完全相同的 major/minor axis 画法
-    draw_major_minor_axes(ax, p_data, xcen, ycen)
-
-    # 绿色零等值线：直接复用第一列 velocity field 的 V_LOS - Vsys = 0 线
-    if current_mom1 is not None:
-        maskmap = np.copy(current_mom1)
-        maskmap[current_mom1 == current_mom1] = 1
-        ax.contour(current_mom1 * maskmap, levels=[0], colors='green',
-                   origin='lower', extent=ext, linewidths=1.2)
-
-    return im, norm
-
 def plot_real_profile(ax, barolo_path, row_idx, is_bottom_row):
     """
     读取对应的 txt 文件并绘制 PA 和 VRAD 在同一个 Y 轴上
@@ -431,13 +378,12 @@ def plot_real_profile(ax, barolo_path, row_idx, is_bottom_row):
         print(f"Error reading {txt_path}: {e}")
 # ================= 主程序执行 =================
 
-fig = plt.figure(figsize=(18, 18))
-# 5列: Map | PV Major | PV Minor | Profile | Residual
-gs = gridspec.GridSpec(6, 5, width_ratios=[1, 1.2, 1.2, 1, 1], wspace=0.2, hspace=0.08)
+fig = plt.figure(figsize=(15, 18))
+# 4列: Map | PV Major | PV Minor | Profile
+gs = gridspec.GridSpec(6, 4, width_ratios=[1, 1.2, 1.2, 1], wspace=0.2, hspace=0.08)
 rows = 6
 
 global_im, global_norm = None, None
-first_mom1 = None
 
 for i in range(rows):
     title, path = models_ordered[i]
@@ -452,22 +398,10 @@ for i in range(rows):
     
     # --- 1. Data Velocity Field ---
     ax0 = fig.add_subplot(gs[i, 0])
-    residual_for_first_col = None
-    if i > 0 and first_mom1 is not None:
-        vsys_m_current = p_data['vsys_m']
-        fpath_current = os.path.join(path, 'maps', gname + '_azim_1mom.fits')
-        with fits.open(fpath_current) as f_current:
-            mom1_current = f_current[0].data[-10+ymin:ymax+10, -10+xmin:xmax+10]
-        current_mom1 = mom1_current - vsys_m_current
-        residual_for_first_col = current_mom1 - first_mom1
     # 传入 p_data 以绘制 Major/Minor 轴
-    im, norm = plot_mom1(ax0, path, p_data, is_bottom_row=is_bottom, residual_data=residual_for_first_col)
+    im, norm = plot_mom1(ax0, path, p_data, is_bottom_row=is_bottom)
     if i == 0: 
         global_im, global_norm = im, norm
-        vsys_m = p_data['vsys_m']
-        fpath = os.path.join(path, 'maps', gname + '_azim_1mom.fits')
-        with fits.open(fpath) as f1:
-            first_mom1 = f1[0].data[-10+ymin:ymax+10, -10+xmin:xmax+10] - vsys_m
         ax0.set_title("Velocity Field")
     
     # 行标题 (左侧)
@@ -488,31 +422,6 @@ for i in range(rows):
     ax3 = fig.add_subplot(gs[i, 3])
     plot_real_profile(ax3, path, i, is_bottom)
     if i == 0: ax3.set_title("Profile")
-
-    # --- 5. Residual Velocity Field ---
-    ax4 = fig.add_subplot(gs[i, 4])
-    if i == 0:
-        #ax4.text(0.5, 0.5, "Reference", ha='center', fontsize=9)
-        plt.gca().set_xticklabels([])
-        plt.gca().set_yticklabels([])
-        ax4.set_title("Residual")
-    elif first_mom1 is not None:
-        plt.gca().set_xticklabels([])
-        plt.gca().set_yticklabels([])
-        vsys_m_current = p_data['vsys_m']
-        fpath_current = os.path.join(path, 'maps', gname + '_azim_1mom.fits')
-        with fits.open(fpath_current) as f_current:
-            mom1_current = f_current[0].data[-10+ymin:ymax+10, -10+xmin:xmax+10]
-        current_mom1 = mom1_current - vsys_m_current
-        residual_mom1 = current_mom1 - first_mom1
-        im_res, norm_res = plot_residual_mom1(ax4, residual_mom1, p_data, is_bottom,
-                                              current_mom1=current_mom1, first_mom1=first_mom1)
-        if im_res is not None:
-            cb = fig.colorbar(im_res, ax=ax4, orientation='vertical', fraction=0.046, pad=0.03)
-            cb.ax.tick_params(labelsize=7)
-            cb.set_label(r'$\Delta V_{\rm LOS}$ (km/s)', fontsize=8)
-    #else:
-        #ax4.text(0.5, 0.5, "Reference", ha='center', fontsize=9)
     
 # --- 添加 Colorbar (Velocity Field) ---
 # if global_im:
@@ -524,7 +433,7 @@ for i in range(rows):
 #     cb.set_label(r'$\Delta V_{LOS}$ (km/s)', fontsize=9)
 
 # 保存文件
-output_file = 'Final_Kinematic_Comparison_6x5.pdf'
-plt.subplots_adjust(left=0.08, bottom=0.08, right=0.98, top=0.95)
+output_file = 'Final_Kinematic_Comparison_6x4.pdf'
+plt.subplots_adjust(left=0.1, bottom=0.08, right=0.95, top=0.95)
 fig.savefig(output_file, dpi=150, bbox_inches='tight')
 print(f"Finished. Saved to {output_file}")

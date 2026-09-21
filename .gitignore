@@ -1,0 +1,6 @@
+# 创建 .gitignore 文件，写入以下内容
+echo "*.fits" > .gitignore
+echo "*.pdf" >> .gitignore
+echo "*.txt" >> .gitignore
+echo "__pycache__/" >> .gitignore
+echo ".DS_Store" >> .gitignore
